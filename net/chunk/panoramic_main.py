@@ -4,13 +4,14 @@ import os
 import sys
 import numpy as np
 import load_trace
-import panoramix_env as env
+import panoramic_env as env
 import datetime
 
 M_IN_K = 1000.0
 RANDOM_SEED = 42
 LOG_FILE = '../5G_test_results/log_panoramic_v0'
-TEST_TRACES = '../test/'
+# TEST_TRACES = '../test/'
+TEST_TRACES = '../one_trace/'
 
 S_INFO = 6  # bit_rate, buffer_size, next_chunk_size, bandwidth_measurement(throughput and time), chunk_til_video_end
 S_LEN = 8  # take how many chunks in the past
@@ -32,7 +33,7 @@ def get_video_init_setings():
     return setings, state
 
 
-# net_info:time_stamp, delay, video_chunk_remain
+# net_info:start_time, end_time, delay, chunk_size, video_chunk_remain, latency
 # video_info:待定
 def get_video_setings(state, net_info, video_info):
     # 改变state
@@ -46,8 +47,12 @@ def calc_reward(net_info, video_info):
 
 
 def record_log(log_file,net_info, video_info, reward):
-    log_file.write()
-    log_file.write('\n')
+    log_file.write('{0:10.3f}\t'.format(net_info[0])+
+                    '{0:10.3f}\t'.format(net_info[1])+
+                    '{0:10.3f}\t'.format(net_info[2]/1000.0)+
+                    '{0:10.3f}\t'.format(net_info[3]/1000.0)+
+                    '{0:10.3f}\t'.format(net_info[4])+
+                    '{0:10.3f}\n'.format(net_info[5]))
 
     
 def main():
@@ -55,8 +60,8 @@ def main():
     np.random.seed(RANDOM_SEED)
 
     all_cooked_time, all_cooked_bw, all_file_names = load_trace.load_trace(TEST_TRACES)
-    net_env = env.Environment(all_cooked_time=all_cooked_time, all_cooked_bw=all_cooked_bw)
-
+    net_env = env.panoramic_env(all_cooked_time=all_cooked_time, all_cooked_bw=all_cooked_bw)
+    video_count = 0
     log_path = LOG_FILE + '_' + all_file_names[net_env.trace_idx]
     log_file = open(log_path, 'w')
 
@@ -66,7 +71,7 @@ def main():
         
         tile = video_setings['tile']
         tile_size = video_setings['tile_size']
-        tile_bitrate = video_setings['tilebitrate']
+        tile_bitrate = video_setings['tile_bitrate']
         fps = video_setings['fps']
 
         net_info, video_info, end_of_video = net_env.get_video_chunk(video_setings)
@@ -75,8 +80,11 @@ def main():
         record_log(log_file, net_info, video_info, reward)
 
         if not end_of_video:
-            video_setings = get_video_setings(net_info, video_info)
+            video_setings = get_video_setings(state, net_info, video_info)
         else:
+            video_count += 1
+            if video_count >= len(all_file_names):
+                break
             video_setings, state = get_video_init_setings()
             log_path = LOG_FILE + '_' + all_file_names[net_env.trace_idx]
             log_file = open(log_path, 'w')

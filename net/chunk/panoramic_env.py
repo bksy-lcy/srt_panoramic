@@ -16,18 +16,24 @@ PACKET_SIZE = 1500  # bytes
 VIDEO_CHUNCK_LEN = 1000.0  # millisec
 
 #模拟视频时长
-TOTAL_VIDEO_CHUNCK = 157 
+TOTAL_VIDEO_CHUNCK = 172
 #可变参数
-fps_set = [1, 5, 10, 15, 20, 25, 30, 60]
-tile_set = [(1,1), (2,3), (4,6), (8,12), (16,24)]
+# fps_set = [1, 5, 10, 15, 20, 25, 30, 60]
+# tile_set = [(1,1), (2,3), (4,6), (8,12), (16,24)]
 # tile_size_set备选：8k 4k 2k 1080P 720P ?
-tile_size_set = ['WxH', 'WxH', 'WxH', 'WxH', 'WxH']
-BITRATE_LEVELS = 6
-VIDEO_BIT_RATE = np.array([20000, 40000, 60000, 80000, 110000, 160000])  # Kbps
+# tile_size_set = ['WxH', 'WxH', 'WxH', 'WxH', 'WxH']
+# BITRATE_LEVELS = 6
+# VIDEO_BIT_RATE = np.array([20000, 40000, 60000, 80000, 110000, 160000])  # Kbps
+fps_set = [30]
+tile_set = [(1,1)]
+# tile_size_set备选：8k 4k 2k 1080P 720P ?
+tile_size_set = ['WxH']
+BITRATE_LEVELS = 1
+VIDEO_BIT_RATE = [160000]  # Kbps
 
-VIDEO_SIZE_FILE = './videos/video_size.txt'
-VIDEO_INFO_FILE = './videos/video_info.txt'
-VIDEO_DIFF_FILE = './videos/video_diff.txt'
+VIDEO_SIZE_FILE = '../videos/video_size.txt'
+VIDEO_INFO_FILE = '../videos/video_info.txt'
+VIDEO_DIFF_FILE = '../videos/video_diff.txt'
 
 class panoramic_env:
     def __init__(self, all_cooked_time, all_cooked_bw, random_seed=RANDOM_SEED):
@@ -62,7 +68,7 @@ class panoramic_env:
                     tile_cnt = tile[0]*tile[1]
                     for tile_id in range(tile_cnt):
                         tmp[fps][tile][tile_id] = {}
-                        for tile_size in range(tile_size_set.length):
+                        for tile_size in range(len(tile_size_set)):
                             tmp[fps][tile][tile_id][tile_size] = []
                             for tile_bitrate in range(BITRATE_LEVELS):
                                 tmp[fps][tile][tile_id][tile_size].append(self.read_int(video_size_file))
@@ -81,7 +87,7 @@ class panoramic_env:
                 for tile in tile_set:
                     tmp[fps][tile] = {}
                     tile_cnt = tile[0]*tile[1]
-                    for tile_seting in range(tile_cnt):
+                    for tile_seting in range((len(tile_size_set)*BITRATE_LEVELS)**tile_cnt):
                         tmp[fps][tile][tile_seting] = self.read_video_info(video_info_file)
             self.video_info_s.append(tmp)
         video_info_file.close()
@@ -96,32 +102,33 @@ class panoramic_env:
                 for tile in tile_set:
                     tmp[fps][tile] = {}
                     tile_cnt = tile[0]*tile[1]
-                    for tile_seting in range(tile_cnt):
-                        tmp[fps][tile][tile_seting] = self.read_int(video_diff_file)
+                    for tile_seting in range((len(tile_size_set)*BITRATE_LEVELS)**tile_cnt):
+                        # tmp[fps][tile][tile_seting] = self.read_int(video_diff_file)
+                        tmp[fps][tile][tile_seting] = self.read_video_info(video_diff_file)
             self.video_diff_s.append(tmp)
         video_diff_file.close()
 
 
-    def read_int(_file):
+    def read_int(self, _file):
         return int(_file.readline()[0:-1])
 
     
-    def read_video_info(_file):
+    def read_video_info(self, _file):
         # info结构待定
         return None
 
 
-    def tile_seting_to_int(tile_seting):
+    def tile_seting_to_int(self, tile_seting):
         seting_id = 0
-        base = tile_size_set.length * BITRATE_LEVELS
+        base = len(tile_size_set) * BITRATE_LEVELS
         for one_seting in tile_seting:
             seting_id *= base
             seting_id += one_seting[0]*BITRATE_LEVELS + one_seting[1]
         return seting_id
     
-    def int_to_tile_seting(x, tile_cnt):
+    def int_to_tile_seting(self, x, tile_cnt):
         tile_seting = [(0,0) for tile_id in range(tile_cnt)]
-        base = tile_size_set.length * BITRATE_LEVELS
+        base = len(tile_size_set) * BITRATE_LEVELS
         for tile_id in range(tile_cnt-1, -1, -1):
             y = x % base
             x = x // base
@@ -136,29 +143,33 @@ class panoramic_env:
         return self.video_diff_s[self.video_chunk_counter][video_setings['fps']][video_setings['tile']][tile_seting]
 
 
-    def get_video_info(self,video_setings)
+    def get_video_info(self,video_setings):
         tile_size = video_setings['tile_size']
         tile_bitrate = video_setings['tile_bitrate']
         tile_seting = self.tile_seting_to_int(zip(tile_size, tile_bitrate))
+        # print(self.video_chunk_counter, video_setings['fps'], video_setings['tile'], tile_seting)
         return self.video_info_s[self.video_chunk_counter][video_setings['fps']][video_setings['tile']][tile_seting], self.get_video_diff(video_setings)
     
 
     def get_video_chunk(self, video_setings):
 
         video_chunk_size_s = self.video_size[self.video_chunk_counter][video_setings['fps']][video_setings['tile']]
-        tile_cnt = video_setings[['tile'][0]*video_setings[['tile'][1]
+        tile_cnt = video_setings['tile'][0]*video_setings['tile'][1]
         tile_size = video_setings['tile_size']
         tile_bitrate = video_setings['tile_bitrate']
 
         # chunk level
         # chunk_finish_time = video_chunk_counter + 1
-        if self.last_mahimahi_time < video_chunk_counter + 1
-            self.last_mahimahi_time = video_chunk_counter + 1
+        if self.last_mahimahi_time < self.video_chunk_counter + 1:
+            self.last_mahimahi_time = self.video_chunk_counter + 1
+        start_time = self.last_mahimahi_time
         delay = 0.0
+        chunk_size = 0.0
         # 串行传输
         for tile_id in range(tile_cnt):
             video_chunk_size = video_chunk_size_s[tile_id][tile_size[tile_id]][tile_bitrate[tile_id]]
             video_chunk_counter_sent = 0
+            chunk_size += video_chunk_size
             while True:
                 throughput = self.cooked_bw[self.mahimahi_ptr] * B_IN_MB / BITS_IN_BYTE
                 duration = self.cooked_time[self.mahimahi_ptr] - self.last_mahimahi_time
@@ -183,13 +194,14 @@ class panoramic_env:
         delay += LINK_RTT
         # video_chunk_remain:有多少chunk停留在发送队列
         video_chunk_remain = self.last_mahimahi_time - self.video_chunk_counter - 1
+        latency = video_chunk_remain
         video_chunk_remain = math.floor(video_chunk_remain)
         self.video_chunk_counter += 1
 
-        net_info = (self.last_mahimahi_time, delay, video_chunk_remain)
+        net_info = (start_time, self.last_mahimahi_time, delay, chunk_size, video_chunk_remain, latency)
         video_info = self.get_video_info(video_setings)
         end_of_video = False
-        if self.video_chunk_counter >= TOTAL_VIDEO_CHUNCK:
+        if self.video_chunk_counter >= TOTAL_VIDEO_CHUNCK-1:
             end_of_video = True
             self.video_chunk_counter = 0
             self.trace_idx += 1

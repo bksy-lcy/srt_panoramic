@@ -27,7 +27,7 @@ tile_size_set = env.tile_size_set
 #state: 用于决策的状态
 #state: 待定
 def get_video_init_setings():
-    setings = {'tile': (1,1), 'tile_size':[[0]], 'tile_bitrate': [[0]], 'fps': 30}
+    setings = {'tile': (1,1), 'tile_size':[0], 'tile_bitrate': [0], 'fps': 30}
     state = []
     return setings, state
 
@@ -37,7 +37,7 @@ def get_video_init_setings():
 def get_video_setings(state, net_info, video_info):
     # 改变state
     # state => setings
-    setings = {'tile': (1,1), 'tile_size':[[0]], 'tile_bitrate': [[0]], 'fps': 30}
+    setings = {'tile': (1,1), 'tile_size':[0], 'tile_bitrate': [0], 'fps': 30}
     return setings
 
 

@@ -24,6 +24,8 @@ TOTAL_VIDEO_CHUNCK = 172
 # tile_size_set = ['WxH', 'WxH', 'WxH', 'WxH', 'WxH']
 # BITRATE_LEVELS = 6
 # VIDEO_BIT_RATE = np.array([20000, 40000, 60000, 80000, 110000, 160000])  # Kbps
+# BITRATE_LEVELS = 7
+# VIDEO_BIT_RATE = np.array([0, 20000, 40000, 60000, 80000, 110000, 160000])  # Kbps
 fps_set = [30]
 tile_set = [(1,1)]
 # tile_size_set备选：8k 4k 2k 1080P 720P ?

@@ -4,61 +4,74 @@ import os
 import sys
 import numpy as np
 import load_trace
-import panoramix_env as env
+import panoramic_env as env
 import datetime
 
+M_IN_K = 1000.0
+RANDOM_SEED = 42
+LOG_FILE = '../5G_test_results/log_panoramic_v0'
+# TEST_TRACES = '../test/'
+TEST_TRACES = '../one_trace/'
 
-S_INFO = 6  # bit_rate, buffer_size, next_chunk_size, bandwidth_measurement(throughput and time), chunk_til_video_end
+S_INFO = 6  # bit_rate, buffer_size, next_frame_size, bandwidth_measurement(throughput and time), frame_til_video_end
 S_LEN = 8  # take how many frames in the past
 A_DIM = 6
-VIDEO_BIT_RATE = np.array([20000, 40000, 60000, 80000, 110000, 160000])  # Kbps
-BUFFER_NORM_FACTOR = 10.0
-CHUNK_TIL_VIDEO_END_CAP = 157.0
-M_IN_K = 1000.0
 
-REBUF_PENALTY = 160.0  # 1 sec rebuffering -> 160 Mbps
-SMOOTH_PENALTY = 1
-DEFAULT_QUALITY = 1  # default video quality without agent
-
-RANDOM_SEED = 42
-LOG_FILE = '5G_test_results/log_sim_bba'
-TEST_TRACES = './test/'
-
-chunk_size = {}
+BITRATE_LEVELS = env.BITRATE_LEVELS
+VIDEO_BIT_RATE = env.VIDEO_BIT_RATE
+fps_set =env.fps_set
+tile_set = env.tile_set
+tile_size_set = env.tile_size_set
 
 
+
+#state: 用于决策的状态
+#state: 待定
 def get_video_init_setings():
-    setings = {'tile': (1,1), 'tile_size':[[0]], 'tile_bitrate': [[0]], 'fps': 30}
+    setings = {'tile': (1,1), 'tile_size':[0], 'tile_bitrate': [0], 'fps': 30}
+    state = []
+    return setings, state
 
 
-def get_video_init_setings(net_info, video_info):
-    setings = {'tile': (1,1), 'tile_size':[[0]], 'tile_bitrate': [[0]], 'fps': 30}
+# net_info:start_time, end_time, delay, frame_size, video_frame_remain, latency
+# video_info:待定
+def get_video_setings(state, net_info, video_info):
+    # 改变state
+    # state => setings
+    setings = {'tile': (1,1), 'tile_size':[0], 'tile_bitrate': [0], 'fps': 30}
+    return setings
+
+
+def calc_reward(net_info, video_info):
+    return 0
+
+
+def record_log(log_file,net_info, video_info, reward):
+    log_file.write('{0:10.3f}\t'.format(net_info[0])+
+                    '{0:10.3f}\t'.format(net_info[1])+
+                    '{0:10.3f}\t'.format(net_info[2]/1000.0)+
+                    '{0:10.3f}\t'.format(net_info[3]/1000.0)+
+                    '{0:10.3f}\t'.format(net_info[4])+
+                    '{0:10.3f}\n'.format(net_info[5]))
 
     
 def main():
 
     np.random.seed(RANDOM_SEED)
 
-    assert len(VIDEO_BIT_RATE) == A_DIM
-
     all_cooked_time, all_cooked_bw, all_file_names = load_trace.load_trace(TEST_TRACES)
-
-    net_env = env.Environment(all_cooked_time=all_cooked_time,
-                              all_cooked_bw=all_cooked_bw)
-
+    net_env = env.panoramic_env(all_cooked_time=all_cooked_time, all_cooked_bw=all_cooked_bw)
+    video_count = 0
     log_path = LOG_FILE + '_' + all_file_names[net_env.trace_idx]
     log_file = open(log_path, 'w')
 
-
-    time_stamp = 0
-
-    video_setings = get_video_init_setings()
+    video_setings, state = get_video_init_setings()
 
     while True:
         
         tile = video_setings['tile']
         tile_size = video_setings['tile_size']
-        tile_bitrate = video_setings['tilebitrate']
+        tile_bitrate = video_setings['tile_bitrate']
         fps = video_setings['fps']
 
         net_info, video_info, end_of_video = net_env.get_video_frame(video_setings)
@@ -66,123 +79,24 @@ def main():
         reward = calc_reward(net_info, video_info)
         record_log(log_file, net_info, video_info, reward)
 
+        # for train
+        # Data(state, video_seting, net_info, video_info, reward)
+        # reward: 准确度、延迟、带宽（考虑带宽费用情况下？）
+        # 两种决策方式:
+        # 1) x秒决策一次，frame传输
+        # 2) 每frame决策：难以实现？每帧决策导致帧与帧之间tile划分不一样，是否还能编码？
+        # 
+
+
         if not end_of_video:
-            video_setings = get_video_setings(net_info, video_info)
+            video_setings = get_video_setings(state, net_info, video_info)
         else:
-            video_setings = get_video_init_setings()
-            log_path = LOG_FILE + '_' + all_file_names[net_env.trace_idx]
-            log_file = open(log_path, 'w')
-
-
-
-    '''
-    last_bit_rate = DEFAULT_QUALITY
-    bit_rate = DEFAULT_QUALITY
-
-    action_vec = np.zeros(A_DIM)
-    action_vec[bit_rate] = 1
-
-    s_batch = [np.zeros((S_INFO, S_LEN))]
-    a_batch = [action_vec]
-    r_batch = []
-    entropy_record = []
-    entropy_ = 0.5
-    video_count = 0
-    
-    while True:  # serve video forever
-        # the action is from the last decision
-        # this is to make the framework similar to the real
-        delay, sleep_time, buffer_size, rebuf, \
-        video_chunk_size, next_video_chunk_sizes, \
-        end_of_video, video_chunk_remain = \
-            net_env.get_video_chunk(bit_rate)
-
-        time_stamp += delay  # in ms
-        time_stamp += sleep_time  # in ms
-
-        # reward is video quality - rebuffer penalty - smoothness
-        reward = VIDEO_BIT_RATE[bit_rate] / M_IN_K \
-                    - REBUF_PENALTY * rebuf \
-                    - SMOOTH_PENALTY * np.abs(VIDEO_BIT_RATE[bit_rate] -
-                                            VIDEO_BIT_RATE[last_bit_rate]) / M_IN_K
-
-        r_batch.append(reward)
-
-        last_bit_rate = bit_rate
-
-        # log time_stamp, bit_rate, buffer_size, reward
-        log_file.write(str(time_stamp / M_IN_K) + '\t' +
-                        str(VIDEO_BIT_RATE[bit_rate]) + '\t' +
-                        str(buffer_size) + '\t' +
-                        str(rebuf) + '\t' +
-                        str(video_chunk_size) + '\t' +
-                        str(delay) + '\t' +
-                        str(entropy_) + '\t' + 
-                        str(reward) + '\n')
-        log_file.flush()
-
-        # retrieve previous state
-        if len(s_batch) == 0:
-            state = [np.zeros((S_INFO, S_LEN))]
-        else:
-            state = np.array(s_batch[-1], copy=True)
-
-        # dequeue history record
-        state = np.roll(state, -1, axis=1)
-
-        delay = float(delay) - env.LINK_RTT
-        # this should be S_INFO number of terms
-        state[0, -1] = VIDEO_BIT_RATE[bit_rate] / float(np.max(VIDEO_BIT_RATE))  # last quality
-        state[1, -1] = buffer_size / BUFFER_NORM_FACTOR  # 10 sec
-        state[2, -1] = float(video_chunk_size) / float(delay) / M_IN_K  # kilo byte / ms
-        state[3, -1] = float(delay) / M_IN_K / BUFFER_NORM_FACTOR  # 10 sec
-        state[4, :A_DIM] = np.array(next_video_chunk_sizes) / M_IN_K / M_IN_K  # mega byte
-        state[5, -1] = np.minimum(video_chunk_remain, CHUNK_TIL_VIDEO_END_CAP) / float(CHUNK_TIL_VIDEO_END_CAP)
-
-        # write your own ABR algorithm here
-        # buffer-based approach (BBA-0)
-        RESEVOIR, CUSHION = 5, 10
-
-        if buffer_size < RESEVOIR:
-            bit_rate = 0
-        elif buffer_size >= RESEVOIR + CUSHION:
-            bit_rate = A_DIM - 1
-        else:
-            bit_rate = (A_DIM - 1) * (buffer_size - RESEVOIR) / float(CUSHION)
-
-        bit_rate = int(bit_rate)
-        
-        s_batch.append(state)
-        entropy_ = 0.
-        entropy_record.append(entropy_)
-
-        if end_of_video:
-            log_file.write('\n')
-            log_file.close()
-
-            last_bit_rate = DEFAULT_QUALITY
-            bit_rate = DEFAULT_QUALITY  # use the default action here
-
-            del s_batch[:]
-            del a_batch[:]
-            del r_batch[:]
-
-            action_vec = np.zeros(A_DIM)
-            action_vec[bit_rate] = 1
-
-            s_batch.append(np.zeros((S_INFO, S_LEN)))
-            a_batch.append(action_vec)
-            # print(np.mean(entropy_record))
-            entropy_record = []
-
             video_count += 1
-
             if video_count >= len(all_file_names):
                 break
-
+            video_setings, state = get_video_init_setings()
             log_path = LOG_FILE + '_' + all_file_names[net_env.trace_idx]
             log_file = open(log_path, 'w')
-    '''
 
 
 if __name__ == '__main__':

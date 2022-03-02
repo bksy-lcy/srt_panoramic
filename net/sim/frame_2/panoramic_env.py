@@ -39,24 +39,22 @@ VIDEO_INFO_FILE = '../videos/frame_info.txt'
 VIDEO_DIFF_FILE = '../videos/frame_diff.txt'
 
 class panoramic_env:
-    def __init__(self, all_cooked_time, all_cooked_bw, random_seed=RANDOM_SEED):
-        assert len(all_cooked_time) == len(all_cooked_bw)
+    def __init__(self, all_cooked_time, random_seed=RANDOM_SEED):
 
         np.random.seed(random_seed)
 
         self.all_cooked_time = all_cooked_time
-        self.all_cooked_bw = all_cooked_bw
 
         self.video_chunk_counter = 0
         self.buffer_size = 0
 
         self.trace_idx = 0
         self.cooked_time = self.all_cooked_time[self.trace_idx]
-        self.cooked_bw = self.all_cooked_bw[self.trace_idx]
 
         self.mahimahi_start_ptr = 0
         self.mahimahi_ptr = 0
         self.last_mahimahi_time = 0
+        self.mahimahi_base = 0
 
         # 视频frame大小
         # chunk_id:[0,TOTAL_VIDEO_CHUNCK)/fps:(?)/tile:(1*1,2*3,4*6,8*12,16*24)/tile_id:[0,tile_cnt)/tile_size:(?)/tile_bitrate:[0,BITRATE_LEVELS)/cur_f:[0,fps)
@@ -166,51 +164,44 @@ class panoramic_env:
 
         # frame level
         # 按frame传输
-        produce_time = self.video_chunk_counter
-        time_per_frame = 1.0 / fps
         packet_head = 66 #byte
         MTU = 65549-66
-        start_time = max(self.last_mahimahi_time, produce_time+time_per_frame)
+
+        produce_time = self.video_chunk_counter * MILLISECONDS_IN_SECOND
+        time_per_frame = MILLISECONDS_IN_SECOND / fps 
         chunk_size = 0.0
         delay = 0.0
+        self.last_mahimahi_time = self.mahimahi_base + self.cooked_time[self.mahimahi_ptr]
+        start_time = max(self.last_mahimahi_time, math.floor(produce_time+time_per_frame))
+        
         for cur_f in range(fps):
             produce_time += time_per_frame
-            if self.last_mahimahi_time < produce_time:
-                self.last_mahimahi_time = produce_time
-            # 串行传输
+            _produce_time = math.floor(produce_time)
+            while self.mahimahi_base + self.cooked_time[self.mahimahi_ptr] < produce_time :
+                self.mahimahi_ptr += 1
+                if self.mahimahi_ptr >= len(self.cooked_time):
+                    self.mahimahi_base += self.cooked_time[-1]
+                    self.mahimahi_ptr = 0
             for tile_id in range(tile_cnt):
                 video_frame_size = video_chunk_size_s[tile_id][tile_size[tile_id]][tile_bitrate[tile_id]][cur_f]
                 packet_cnt = video_frame_size // MTU
-                packets = [MTU for i in range(packet_cnt)]
                 if packet_cnt*MTU < video_frame_size:
-                    packets.append(video_frame_size-packet_cnt*MTU)
-                for _packet in packets:
-                    throughput = self.cooked_bw[self.mahimahi_ptr] * B_IN_MB / BITS_IN_BYTE
-                    fractional_time = (_packet + packet_head) / throughput
-                    delay += fractional_time
-                    chunk_size += _packet + packet_head
-                    self.last_mahimahi_time += fractional_time
-                    if self.last_mahimahi_time >= self.cooked_time[self.mahimahi_ptr]:
-                        self.mahimahi_ptr += 1
-                    if self.mahimahi_ptr >= len(self.cooked_bw):
+                    packet_cnt += 1
+                chunk_size += packet_cnt*packet_head + video_frame_size
+                for _packet in range(packet_cnt):
+                    self.mahimahi_ptr += 1
+                    if self.mahimahi_ptr >= len(self.cooked_time):
+                        self.mahimahi_base += self.cooked_time[-1]
                         self.mahimahi_ptr = 0
-                        self.last_mahimahi_time = 0
-                    while self.cooked_bw[self.mahimahi_ptr]==0:
-                        self.mahimahi_ptr += 1
-                        if self.mahimahi_ptr >= len(self.cooked_bw):
-                            self.mahimahi_ptr = 0
-                        delay += 1
-                        self.last_mahimahi_time = self.cooked_time[self.mahimahi_ptr] - 1
-
-        delay *= MILLISECONDS_IN_SECOND
-        # delay += LINK_RTT
+            self.last_mahimahi_time = self.mahimahi_base + self.cooked_time[self.mahimahi_ptr-1]
+            delay += self.last_mahimahi_time - _produce_time # + LINK_RTT
         # video_chunk_remain:有多少chunk停留在发送队列
-        video_chunk_remain = self.last_mahimahi_time - self.video_chunk_counter - 1
+        video_chunk_remain = self.last_mahimahi_time / MILLISECONDS_IN_SECOND - self.video_chunk_counter - 1
         latency = video_chunk_remain
         video_chunk_remain = math.floor(video_chunk_remain)
         self.video_chunk_counter += 1
 
-        net_info = (start_time, self.last_mahimahi_time, delay, chunk_size, video_chunk_remain, latency)
+        net_info = (start_time / MILLISECONDS_IN_SECOND, self.last_mahimahi_time / MILLISECONDS_IN_SECOND, delay, chunk_size, video_chunk_remain, latency)
         video_info = self.get_video_info(video_setings)
         end_of_video = False
         if self.video_chunk_counter >= TOTAL_VIDEO_CHUNCK-1:
@@ -220,8 +211,8 @@ class panoramic_env:
             if self.trace_idx >= len(self.all_cooked_time):
                 self.trace_idx = 0
             self.cooked_time = self.all_cooked_time[self.trace_idx]
-            self.cooked_bw = self.all_cooked_bw[self.trace_idx]
             self.mahimahi_ptr = self.mahimahi_start_ptr
             self.last_mahimahi_time = 0
+            self.mahimahi_base = 0
 
         return net_info, video_info, end_of_video

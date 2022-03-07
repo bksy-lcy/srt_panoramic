@@ -28,7 +28,6 @@ TOTAL_VIDEO_CHUNCK = 172
 # VIDEO_BIT_RATE = np.array([0, 20000, 40000, 60000, 80000, 110000, 160000])  # Kbps
 fps_set = [30]
 tile_set = [(1,1)]
-# tile_size_set备选：8k 4k 2k 1080P 720P ?
 tile_size_set = ['WxH']
 BITRATE_LEVELS = 1
 VIDEO_BIT_RATE = [160000]  # Kbps
@@ -164,9 +163,8 @@ class panoramic_env:
 
         # frame level
         # 按frame传输
-        packet_head = 66 #byte
-        MTU = 65549-66
-
+        packet_head = 52 #byte
+        MTU = 1500-52
         produce_time = self.video_chunk_counter * MILLISECONDS_IN_SECOND
         time_per_frame = MILLISECONDS_IN_SECOND / fps 
         chunk_size = 0.0
@@ -177,11 +175,13 @@ class panoramic_env:
         for cur_f in range(fps):
             produce_time += time_per_frame
             _produce_time = math.floor(produce_time)
-            while self.mahimahi_base + self.cooked_time[self.mahimahi_ptr] < produce_time :
+            while self.mahimahi_base + self.cooked_time[self.mahimahi_ptr] < _produce_time :
                 self.mahimahi_ptr += 1
                 if self.mahimahi_ptr >= len(self.cooked_time):
                     self.mahimahi_base += self.cooked_time[-1]
                     self.mahimahi_ptr = 0
+            _start_time = self.mahimahi_base + self.cooked_time[self.mahimahi_ptr]
+
             for tile_id in range(tile_cnt):
                 video_frame_size = video_chunk_size_s[tile_id][tile_size[tile_id]][tile_bitrate[tile_id]][cur_f]
                 packet_cnt = video_frame_size // MTU
@@ -193,8 +193,12 @@ class panoramic_env:
                     if self.mahimahi_ptr >= len(self.cooked_time):
                         self.mahimahi_base += self.cooked_time[-1]
                         self.mahimahi_ptr = 0
-            self.last_mahimahi_time = self.mahimahi_base + self.cooked_time[self.mahimahi_ptr-1]
-            delay += self.last_mahimahi_time - _produce_time # + LINK_RTT
+            if self.mahimahi_ptr > 0:
+                self.last_mahimahi_time = self.mahimahi_base + self.cooked_time[self.mahimahi_ptr-1]
+            else :
+                self.last_mahimahi_time = self.mahimahi_base
+            delay += self.last_mahimahi_time - _start_time # + LINK_RTT
+
         # video_chunk_remain:有多少chunk停留在发送队列
         video_chunk_remain = self.last_mahimahi_time / MILLISECONDS_IN_SECOND - self.video_chunk_counter - 1
         latency = video_chunk_remain

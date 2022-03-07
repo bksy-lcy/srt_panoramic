@@ -3,3 +3,4 @@ srs_start: ./objs/srs -c conf/lcy_webrtc.conf
 srs_runing: ./etc/init.d/srs
 rmtp: for ((;;)) do ffmpeg -re -i ./doc/source.flv -c copy -f flv rtmp://localhost/live/livestream; sleep 1; done
 rmtp: for ((;;)) do ffmpeg -re -i ~/srt_tmp/videos/NYC8K_VR360.flv -c copy -f flv rtmp://localhost/live/livestream; sleep 1; done
+ffmpeg -re -i ~/srt_tmp/videos/NYC8K_VR360.flv  -c copy -f flv rtmp://166.111.138.147/live/livestream

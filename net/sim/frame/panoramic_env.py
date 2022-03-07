@@ -168,8 +168,8 @@ class panoramic_env:
         # 按frame传输
         produce_time = self.video_chunk_counter
         time_per_frame = 1.0 / fps
-        packet_head = 66 #byte
-        MTU = 65549-66
+        packet_head = 52 #byte
+        MTU = 1500 - 52
         start_time = max(self.last_mahimahi_time, produce_time+time_per_frame)
         chunk_size = 0.0
         delay = 0.0
